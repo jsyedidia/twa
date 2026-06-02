@@ -1,0 +1,35 @@
+[package]
+name = "twa"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "A Rust port of the Three-Weight Algorithm for message-passing on factor graphs."
+publish = false
+
+[lib]
+name = "twa"
+
+[[bin]]
+name = "gui"
+path = "src/bin/gui.rs"
+required-features = ["gui"]
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+rand = "0.9"
+
+[dependencies.eframe]
+version = "0.31"
+optional = true
+
+[dependencies.egui]
+version = "0.31"
+optional = true
+
+[features]
+default = []
+gui = ["dep:eframe", "dep:egui"]
+
+[profile.release]
+lto = true
+codegen-units = 1

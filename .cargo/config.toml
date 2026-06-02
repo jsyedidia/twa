@@ -1,0 +1,4 @@
+[alias]
+sudoku = ["run", "--release", "--bin", "sudoku", "--"]
+gui = ["run", "--release", "--features", "gui", "--bin", "gui"]
+gui-build = ["build", "--release", "--features", "gui", "--bin", "gui"]
