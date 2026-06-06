@@ -24,10 +24,12 @@ The algorithm repeatedly asks:
 1. Given the current messages from the variables, what does each factor want?
 2. Given the current messages from the factors, what consensus should each
    variable enforce?
-3. How much did the messages change?
+3. Did the variable beliefs stop changing?
 
-When the enabled edge messages stop changing beyond the convergence threshold,
-the graph is considered converged.
+When every variable belief value changes by at most the convergence threshold,
+the graph is considered converged. Callers can also add domain-specific
+satisfaction checks for problems where stable beliefs are necessary but not
+quite enough.
 
 ## What An Edge Stores
 
@@ -91,9 +93,14 @@ For each variable:
 
 ### 3. Convergence Check
 
-For each enabled edge, check whether the message change is below
-`convergence_delta`. If all enabled edges satisfy this, the graph has converged
-and iteration stops early.
+For each variable, compare the new consensus value against the previous belief
+value. If every variable changes by at most `convergence_delta`, the graph has
+converged and iteration stops early.
+
+`FactorGraph::max_message_difference()` also exposes the largest enabled-edge
+message change as a diagnostic. That quantity tracks dual-state motion; it is
+not the default stopping criterion because the messages can have a stable
+limit cycle after the variable beliefs have settled.
 
 ## Learning Rate
 
@@ -108,9 +115,13 @@ values provide damping, which can help convergence on difficult problems.
 
 ## Convergence
 
-The graph reports convergence when all enabled edges have
-`|message_change| < convergence_delta`. This means every factor and every
-variable agree (within tolerance) on the value passing through each edge.
+The graph reports convergence when all variable belief values change by at most
+`convergence_delta`. For ordinary `iterate()` and
+`iterate_until_converged()`, belief stability is the whole stopping rule.
+
+Some domains need an additional problem-level check. Circle packing, for
+example, can ask for both stable beliefs and `max_overlap <= tolerance` by
+using `FactorGraph::iterate_until_satisfied()`.
 
 In practice, some problems may not converge. The caller should set a maximum
 iteration count as a safeguard.
@@ -121,6 +132,7 @@ The message-passing loop is split across a small set of source files:
 
 - [src/factor_graph.rs.md](../src/factor_graph.rs.md) explains
   `FactorGraph::iterate()`, `iterate_until_converged()`,
+  `iterate_until_satisfied()`, `max_message_difference()`,
   `enforce_variable_equality()`, convergence checking, and dynamic factor
   callbacks.
 - [src/edge_data.rs.md](../src/edge_data.rs.md) explains `x`, `z`, `u`,

@@ -8,8 +8,8 @@ public API; users hold `GraphEdge` handles, while `FactorGraph` owns the actual
 
 An edge connects one factor to one variable. It stores the factor-side local
 value `x`, the variable-side consensus value `z`, the accumulated disagreement
-`u`, directional message weights, and enough previous-message state to test
-convergence.
+`u`, directional message weights, and enough previous-message state to report
+message-difference diagnostics.
 
 Related concept notes:
 
@@ -36,8 +36,10 @@ pub(crate) struct EdgeData {
 - `x` — the factor-side local value.
 - `z` — the variable-side consensus value.
 - `u` — the accumulated disagreement (dual variable in ADMM terms).
-- `old_message_to_factor` — the previous `z - u` value, used for convergence.
-- `message_difference` — `|current - old|` message change.
+- `old_message_to_factor` — the previous `z - u` value, used to compute a
+  message-difference diagnostic.
+- `message_difference` — `|current - old|` message change, exposed through
+  `FactorGraph::max_message_difference()`.
 - `weight_to_left` — weight on the variable→factor message direction.
 - `weight_to_right` — weight on the factor→variable message direction.
 - `enabled` — whether this edge participates in iteration.
@@ -117,7 +119,8 @@ initialization logic.
 Clears all accumulated state. The variable-side consensus `z` takes the reset
 value; the factor-side `x` starts at zero. The leftward weight (variable→factor
 direction) adopts the reset weight; the rightward weight starts at zero (no
-factor opinion yet). Convergence bookkeeping is cleared. The edge is re-enabled.
+factor opinion yet). Message-difference bookkeeping is cleared. The edge is
+re-enabled.
 
 ### `disable`
 
@@ -128,7 +131,7 @@ factor opinion yet). Convergence bookkeeping is cleared. The edge is re-enabled.
 ```
 
 Marks the edge as inactive. Disabled edges are skipped during factor/variable
-passes and convergence checks.
+passes and message-difference diagnostics.
 
 ### Accessors
 
@@ -214,8 +217,9 @@ the variable how strongly the factor believes in this value.
 ```
 
 Returns the absolute change in the message-to-factor since the last factor
-update. `None` until at least two factor updates have occurred. Used by the
-convergence check.
+update. `None` until at least two factor updates have occurred. This is a
+dual-state diagnostic; the default graph convergence check is based on variable
+belief values.
 
 ### `set_result_from_factor`
 
@@ -237,10 +241,10 @@ convergence check.
 ```
 
 Called after the factor pass. Updates `x` and the rightward weight from the
-minimizer's output. Computes message difference for convergence tracking by
-comparing the current `z - u` against the stored previous value. If the factor
-emitted infinite weight (certainty), disagreement `u` is reset to zero — there
-is no point accumulating disagreement against a certain value.
+minimizer's output. Computes the message difference diagnostic by comparing the
+current `z - u` against the stored previous value. If the factor emitted
+infinite weight (certainty), disagreement `u` is reset to zero — there is no
+point accumulating disagreement against a certain value.
 
 ### `set_result_from_variable`
 

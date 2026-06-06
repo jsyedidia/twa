@@ -89,7 +89,7 @@ Read these in order. They explain the private state that makes the public
 graph API work.
 
 11. **[src/edge_data.rs.md](src/edge_data.rs.md)** - Per-edge `x`, `z`, `u` state, weights, enabled
-    state, and convergence tracking.
+    state, and message-difference diagnostics.
 12. **[src/variable_data.rs.md](src/variable_data.rs.md)** - Per-variable initial value, current
     consensus, connected edges, and lazy enabled-edge cache.
 13. **[src/factor_data.rs.md](src/factor_data.rs.md)** - Per-factor edge exchanges, minimization

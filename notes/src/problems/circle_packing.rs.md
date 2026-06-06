@@ -452,6 +452,9 @@ pub fn max_overlap(
 
 The overlap metric reports the largest current violation. Negative values are
 ignored by starting at `0.0`, so a valid packing reports exactly `0.0`.
+Callers can combine this with `FactorGraph::iterate_until_satisfied()` when
+they want convergence to mean both stable variable beliefs and satisfied
+packing constraints.
 
 ### Dynamic Grid Types
 
@@ -707,7 +710,42 @@ specifically checking boundary violations.
     fn kiss_factor_handles_coincident_center() { /* ... */ }
 
     #[test]
-    fn non_fast_generated_packing_converges() { /* ... */ }
+    fn non_fast_generated_packing_converges() {
+        let delta = 1e-5;
+        let mut graph = FactorGraph::new(0.07, delta, 0);
+        let circles = generate_circles(
+            777,
+            &[RadiusCount {
+                radius: 0.055,
+                count: 12,
+            }],
+            unit_range(),
+            unit_range(),
+        );
+        let variables = add_circle_packing_to_factor_graph(
+            &mut graph,
+            &circles,
+            unit_range(),
+            unit_range(),
+            None,
+        );
+
+        let converged = graph.iterate_until_satisfied(2000, |graph| {
+            max_overlap(graph, &variables, unit_range(), unit_range()) < 100.0 * delta
+        });
+
+        assert!(
+            converged,
+            "graph did not converge; max overlap was {}, max message difference was {:?}",
+            max_overlap(&graph, &variables, unit_range(), unit_range()),
+            graph.max_message_difference()
+        );
+        assert!(
+            max_overlap(&graph, &variables, unit_range(), unit_range()) < 100.0 * delta,
+            "max overlap was {}",
+            max_overlap(&graph, &variables, unit_range(), unit_range())
+        );
+    }
 
     #[test]
     #[should_panic(expected = "radius >= 0")]
@@ -725,7 +763,8 @@ specifically checking boundary violations.
 
 The tests cover deterministic generation, graph shape, dynamic factor
 enablement, boundary projection, pair projection, kiss projection, convergence
-on a generated packing, and validation panics.
+on a generated packing using `max_overlap` as the domain satisfaction predicate,
+and validation panics.
 
 ## Important Invariants
 

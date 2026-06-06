@@ -97,6 +97,11 @@ provides `max_overlap`, which reports the largest current violation among:
 
 `0.0` means the current graph values describe a valid packing.
 
+This metric is also useful as a domain-level convergence condition. The core
+graph stops when variable beliefs stabilize, while circle packing can require
+both stable beliefs and `max_overlap <= tolerance` through
+`FactorGraph::iterate_until_satisfied()`.
+
 ## Relationship To TWA
 
 Circle packing is the clearest example in this crate of zero-weight messages
@@ -118,6 +123,7 @@ read [message_passing.md](message_passing.md).
 - [src/minimizers/in_range.rs.md](../src/minimizers/in_range.rs.md) explains
   the scalar boundary minimizer used for circle coordinates.
 - [src/factor_graph.rs.md](../src/factor_graph.rs.md) explains the dynamic
-  factor enablement API used by the fast builder.
+  factor enablement API used by the fast builder and the
+  `iterate_until_satisfied()` API used for overlap-aware convergence.
 - [src/bin/gui.rs.md](../src/bin/gui.rs.md) shows how the GUI steps the graph
   and visualizes overlap, active pairs, and convergence.

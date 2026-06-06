@@ -51,7 +51,7 @@ pub struct FactorGraph {
 ```
 
 - `learning_rate`: the alpha step size for ADMM disagreement updates.
-- `convergence_delta`: threshold for message-difference convergence check.
+- `convergence_delta`: threshold for variable belief-value convergence.
 - `rng`: boxed RNG passed to minimizers for tie-breaking.
 - `iterations`: count since last reinitialize.
 - `converged`: cached convergence state (sticky once true until reinitialize
@@ -170,6 +170,34 @@ Parameters can be adjusted between iterations or reinitializations.
 Enabled counts are computed by linear scan. This is acceptable because these
 are diagnostic queries, not called on the hot iteration path.
 
+### max_message_difference
+
+```rust
+    /// Returns the largest available enabled-edge message difference.
+    ///
+    /// Message differences are a dual-state diagnostic. They are not the
+    /// default convergence criterion; `iterate()` converges when variable
+    /// beliefs stop changing. Returns `None` until every enabled edge has
+    /// enough history to compute a message difference.
+    pub fn max_message_difference(&self) -> Option<f64> {
+        let mut max_difference: f64 = 0.0;
+
+        for edge in &self.edges {
+            if !edge.is_enabled() {
+                continue;
+            }
+            let difference = edge.message_difference()?;
+            max_difference = max_difference.max(difference);
+        }
+
+        Some(max_difference)
+    }
+```
+
+Message differences are useful for debugging ADMM dual state, but they
+are no used for the default stopping rule. The graph can be done in the primal
+beliefs even when the edge messages continue a stable cycle.
+
 ---
 
 ## Graph Construction
@@ -280,16 +308,25 @@ transitions.
 
 ```rust
 pub fn iterate(&mut self) -> bool {
+    self.iterate_with_satisfaction(&mut |_| true)
+}
+
+fn iterate_with_satisfaction<F>(&mut self, is_satisfied: &mut F) -> bool
+where
+    F: FnMut(&FactorGraph) -> bool,
+{
     if self.converged {
         return true;
     }
 
-    // Factor pass
+    // Factor pass: each factor reads messages, calls its minimizer,
+    // writes results back.
     for factor in &mut self.factors {
         factor.minimize(&mut self.edges, self.rng.as_mut());
     }
 
-    // Variable pass
+    // Variable pass: compute consensus, update edges.
+    let mut beliefs_converged = true;
     for variable in &mut self.variables {
         let (result, has_lone_standard) = {
             let enabled_edges = variable.enabled_edges(&self.edges);
@@ -298,6 +335,8 @@ pub fn iterate(&mut self) -> bool {
                 Self::has_lone_standard_message_to_variable(&self.edges, enabled_edges),
             )
         };
+        beliefs_converged &=
+            Self::belief_converged(variable.value(), result.value, self.convergence_delta);
         variable.update_result(result);
 
         for &edge in variable.enabled_edges(&self.edges) {
@@ -315,12 +354,16 @@ pub fn iterate(&mut self) -> bool {
     }
 
     self.iterations += 1;
-    self.converged = self.all_enabled_edges_converged();
+    self.converged = beliefs_converged;
 
     for callback in &mut self.iteration_callbacks {
         callback();
     }
     self.run_iteration_graph_callbacks();
+
+    if self.converged && !is_satisfied(self) {
+        self.converged = false;
+    }
 
     self.converged
 }
@@ -334,15 +377,21 @@ One full iteration:
    (`enforce_variable_equality`), determine if there's a lone standard
    message, update the variable's value/weight, then update each connected
    enabled edge via `set_result_from_variable`.
-3. **Convergence check**: If all enabled edges have converged (message
-   difference ≤ delta), set `converged = true`.
+3. **Convergence check**: If every variable belief value changed by at most
+   `convergence_delta`, set `converged = true`.
 4. **Callbacks**: Notify listeners. Graph-aware callbacks run after ordinary
    callbacks so they can respond to the final state of the iteration.
+5. **Optional satisfaction check**: `iterate_with_satisfaction` can clear the
+   convergence flag when a domain-specific predicate is not yet satisfied.
 
 The enabled-edge slice is borrowed in two short scopes. The first borrow
 computes the consensus and lone-standard flag, then ends before the variable is
 updated. The second borrow reuses the same cached slice while writing results
 to the edges, so the hot variable pass does not allocate.
+
+The public `iterate()` method uses a predicate that always returns `true`.
+`iterate_until_satisfied()` passes a real predicate when callers need an extra
+domain-level stopping condition.
 
 ---
 
@@ -360,6 +409,35 @@ pub fn iterate_until_converged(&mut self, max_iterations: usize) -> bool {
 ```
 
 Convenience wrapper that loops up to a maximum number of iterations.
+
+## iterate_until_satisfied
+
+```rust
+pub fn iterate_until_satisfied<F>(&mut self, max_iterations: usize, mut is_satisfied: F) -> bool
+where
+    F: FnMut(&FactorGraph) -> bool,
+{
+    if self.converged {
+        if is_satisfied(self) {
+            return true;
+        }
+        self.converged = false;
+    }
+
+    for _ in 0..max_iterations {
+        if self.iterate_with_satisfaction(&mut is_satisfied) {
+            return true;
+        }
+    }
+    self.converged
+}
+```
+
+This is the escape hatch for domain semantics. Belief stability is necessary,
+but a caller can also require a predicate such as
+`max_overlap(graph, variables, horizontal, vertical) <= tolerance`. If the graph
+was already marked converged but the predicate is false, the method clears the
+cached convergence flag and continues iterating.
 
 ---
 
@@ -581,26 +659,18 @@ none carry infinite weight. In this case the lone standard edge has its
 disagreement reset during the variable pass, which accelerates convergence
 when only one factor has a meaningful opinion.
 
-### all_enabled_edges_converged
+### belief_converged
 
 ```rust
-fn all_enabled_edges_converged(&self) -> bool {
-    for edge in &self.edges {
-        if !edge.is_enabled() {
-            continue;
-        }
-        match edge.message_difference() {
-            Some(diff) if diff <= self.convergence_delta => {}
-            _ => return false,
-        }
-    }
-    true
+fn belief_converged(old_value: f64, new_value: f64, convergence_delta: f64) -> bool {
+    (old_value - new_value).abs() <= convergence_delta
 }
 ```
 
-An edge is converged if its message difference exists and is at or below the
-delta threshold. Edges that have not yet had two factor passes (difference is
-`None`) are not converged.
+The default convergence check compares variable belief values before and after
+the variable pass. It intentionally ignores message differences and weights:
+message state can keep cycling even when the beliefs and domain constraints are
+stable.
 
 ---
 
@@ -804,6 +874,52 @@ iteration count, and fires the reinitialize callback.
 
 Disabling a factor removes its edge from iteration; re-enabling restores the
 edge and lets the factor influence consensus again.
+
+```rust
+    #[test]
+    fn iterate_until_satisfied_requires_domain_predicate() {
+        let mut graph = FactorGraph::default();
+        let variable = graph.create_variable(0.0, MessageWeight::Standard);
+        let edge = graph.create_edge(variable);
+        graph.create_factor(&[edge], known_value_minimizer(4.0));
+
+        assert!(!graph.iterate_until_satisfied(10, |graph| graph.value(variable) > 10.0));
+        assert!(!graph.converged());
+        assert!(nearly_equal(graph.value(variable), 4.0));
+
+        assert!(graph.iterate_until_satisfied(10, |graph| graph.value(variable) == 4.0));
+        assert!(graph.converged());
+    }
+```
+
+The domain predicate is part of the stopping condition. A graph whose beliefs
+are stable can keep reporting unconverged until the predicate agrees that the
+domain problem is satisfied.
+
+```rust
+    #[test]
+    fn message_difference_remains_available_as_diagnostic() {
+        let mut graph = FactorGraph::default();
+        let variable = graph.create_variable(0.0, MessageWeight::Standard);
+        let edge = graph.create_edge(variable);
+        graph.create_factor(&[edge], known_value_minimizer(7.0));
+
+        assert_eq!(graph.max_message_difference(), None);
+        assert!(!graph.iterate());
+        assert_eq!(graph.max_message_difference(), None);
+        assert!(graph.iterate());
+        assert!(
+            graph
+                .max_message_difference()
+                .is_some_and(|diff| diff > 1.0)
+        );
+        assert!(graph.converged());
+    }
+```
+
+This test captures the reason convergence is belief-based: the graph can be
+converged in the values while a large message difference remains observable as
+a diagnostic.
 
 ```rust
     #[test]

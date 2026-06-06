@@ -823,8 +823,16 @@ mod tests {
             None,
         );
 
-        graph.iterate_until_converged(2000);
+        let converged = graph.iterate_until_satisfied(2000, |graph| {
+            max_overlap(graph, &variables, unit_range(), unit_range()) < 100.0 * delta
+        });
 
+        assert!(
+            converged,
+            "graph did not converge; max overlap was {}, max message difference was {:?}",
+            max_overlap(&graph, &variables, unit_range(), unit_range()),
+            graph.max_message_difference()
+        );
         assert!(
             max_overlap(&graph, &variables, unit_range(), unit_range()) < 100.0 * delta,
             "max overlap was {}",

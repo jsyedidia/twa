@@ -35,7 +35,7 @@ impl FactorGraph {
     /// Creates a new factor graph with the given parameters.
     ///
     /// - `learning_rate`: step size for the disagreement update (alpha in ADMM).
-    /// - `convergence_delta`: threshold below which message changes are
+    /// - `convergence_delta`: threshold below which variable belief changes are
     ///   considered converged.
     /// - `random_seed`: seed for the random number generator used by minimizers.
     pub fn new(learning_rate: f64, convergence_delta: f64, random_seed: u64) -> Self {
@@ -113,6 +113,26 @@ impl FactorGraph {
     /// Returns the number of currently enabled factors.
     pub fn num_enabled_factors(&self) -> usize {
         self.factors.iter().filter(|f| f.is_enabled()).count()
+    }
+
+    /// Returns the largest available enabled-edge message difference.
+    ///
+    /// Message differences are a dual-state diagnostic. They are not the
+    /// default convergence criterion; `iterate()` converges when variable
+    /// beliefs stop changing. Returns `None` until every enabled edge has
+    /// enough history to compute a message difference.
+    pub fn max_message_difference(&self) -> Option<f64> {
+        let mut max_difference: f64 = 0.0;
+
+        for edge in &self.edges {
+            if !edge.is_enabled() {
+                continue;
+            }
+            let difference = edge.message_difference()?;
+            max_difference = max_difference.max(difference);
+        }
+
+        Some(max_difference)
     }
 
     /// Creates a new variable with the given initial value and weight.
@@ -219,9 +239,16 @@ impl FactorGraph {
 
     /// Runs one iteration of the TWA algorithm.
     ///
-    /// Returns `true` if the graph has converged (all enabled edge message
-    /// differences are below `convergence_delta`).
+    /// Returns `true` if the graph has converged (all variable belief values
+    /// changed by at most `convergence_delta`).
     pub fn iterate(&mut self) -> bool {
+        self.iterate_with_satisfaction(&mut |_| true)
+    }
+
+    fn iterate_with_satisfaction<F>(&mut self, is_satisfied: &mut F) -> bool
+    where
+        F: FnMut(&FactorGraph) -> bool,
+    {
         if self.converged {
             return true;
         }
@@ -233,6 +260,7 @@ impl FactorGraph {
         }
 
         // Variable pass: compute consensus, update edges.
+        let mut beliefs_converged = true;
         for variable in &mut self.variables {
             let (result, has_lone_standard) = {
                 let enabled_edges = variable.enabled_edges(&self.edges);
@@ -241,6 +269,8 @@ impl FactorGraph {
                     Self::has_lone_standard_message_to_variable(&self.edges, enabled_edges),
                 )
             };
+            beliefs_converged &=
+                Self::belief_converged(variable.value(), result.value, self.convergence_delta);
             variable.update_result(result);
 
             for &edge in variable.enabled_edges(&self.edges) {
@@ -258,12 +288,16 @@ impl FactorGraph {
         }
 
         self.iterations += 1;
-        self.converged = self.all_enabled_edges_converged();
+        self.converged = beliefs_converged;
 
         for callback in &mut self.iteration_callbacks {
             callback();
         }
         self.run_iteration_graph_callbacks();
+
+        if self.converged && !is_satisfied(self) {
+            self.converged = false;
+        }
 
         self.converged
     }
@@ -275,6 +309,31 @@ impl FactorGraph {
     pub fn iterate_until_converged(&mut self, max_iterations: usize) -> bool {
         for _ in 0..max_iterations {
             if self.iterate() {
+                return true;
+            }
+        }
+        self.converged
+    }
+
+    /// Runs up to `max_iterations` iterations, stopping early if variable
+    /// beliefs converge and `is_satisfied` returns `true`.
+    ///
+    /// Use this for domain-specific stopping conditions. For example, circle
+    /// packing can require `max_overlap(...) <= tolerance` in addition to
+    /// stable variable beliefs.
+    pub fn iterate_until_satisfied<F>(&mut self, max_iterations: usize, mut is_satisfied: F) -> bool
+    where
+        F: FnMut(&FactorGraph) -> bool,
+    {
+        if self.converged {
+            if is_satisfied(self) {
+                return true;
+            }
+            self.converged = false;
+        }
+
+        for _ in 0..max_iterations {
+            if self.iterate_with_satisfaction(&mut is_satisfied) {
                 return true;
             }
         }
@@ -440,17 +499,8 @@ impl FactorGraph {
         standard_count == 1
     }
 
-    fn all_enabled_edges_converged(&self) -> bool {
-        for edge in &self.edges {
-            if !edge.is_enabled() {
-                continue;
-            }
-            match edge.message_difference() {
-                Some(diff) if diff <= self.convergence_delta => {}
-                _ => return false,
-            }
-        }
-        true
+    fn belief_converged(old_value: f64, new_value: f64, convergence_delta: f64) -> bool {
+        (old_value - new_value).abs() <= convergence_delta
     }
 }
 
@@ -610,6 +660,40 @@ mod tests {
 
         assert!(graph.iterate_until_converged(100));
         assert!(nearly_equal(graph.value(variable), 10.0));
+    }
+
+    #[test]
+    fn iterate_until_satisfied_requires_domain_predicate() {
+        let mut graph = FactorGraph::default();
+        let variable = graph.create_variable(0.0, MessageWeight::Standard);
+        let edge = graph.create_edge(variable);
+        graph.create_factor(&[edge], known_value_minimizer(4.0));
+
+        assert!(!graph.iterate_until_satisfied(10, |graph| graph.value(variable) > 10.0));
+        assert!(!graph.converged());
+        assert!(nearly_equal(graph.value(variable), 4.0));
+
+        assert!(graph.iterate_until_satisfied(10, |graph| graph.value(variable) == 4.0));
+        assert!(graph.converged());
+    }
+
+    #[test]
+    fn message_difference_remains_available_as_diagnostic() {
+        let mut graph = FactorGraph::default();
+        let variable = graph.create_variable(0.0, MessageWeight::Standard);
+        let edge = graph.create_edge(variable);
+        graph.create_factor(&[edge], known_value_minimizer(7.0));
+
+        assert_eq!(graph.max_message_difference(), None);
+        assert!(!graph.iterate());
+        assert_eq!(graph.max_message_difference(), None);
+        assert!(graph.iterate());
+        assert!(
+            graph
+                .max_message_difference()
+                .is_some_and(|diff| diff > 1.0)
+        );
+        assert!(graph.converged());
     }
 
     #[test]

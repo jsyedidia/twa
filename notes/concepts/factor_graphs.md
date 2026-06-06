@@ -99,6 +99,12 @@ random seed live on the graph; `FactorGraph::default()` uses the standard
 settings, and `FactorGraph::new(learning_rate, convergence_delta, random_seed)`
 lets callers choose them explicitly.
 
+The default convergence check is belief-based: after an iteration, every
+variable's new value must be within `convergence_delta` of its previous value.
+If a problem also has a natural satisfaction check, use
+`iterate_until_satisfied()`. Circle packing uses this to combine stable
+beliefs with a `max_overlap` threshold.
+
 ### Reading Results
 
 After convergence, read variable values:
@@ -124,8 +130,8 @@ The public graph owns three internal vectors:
   consensus, current weight, connected edges, and a lazy cache of enabled
   edges.
 - `EdgeData` stores per-edge message state: factor-side `x`, variable-side
-  `z`, disagreement `u`, directional weights, enabled state, and convergence
-  bookkeeping.
+  `z`, disagreement `u`, directional weights, enabled state, and
+  message-difference diagnostics.
 - `FactorData` stores per-factor state: the minimization function, exchange
   buffer, certainty-preservation scratch space, and enabled flag.
 
@@ -167,7 +173,7 @@ The implementation maps that description to `FactorGraph::iterate()`:
 1. factor pass: factors compute local `x` values;
 2. variable pass: variables compute consensus `z` values;
 3. edge update: edges update disagreement `u`;
-4. convergence check: enabled edges report whether messages have stabilized.
+4. convergence check: variable beliefs report whether values have stabilized.
 
 For the step-by-step implementation, read
 [src/factor_graph.rs.md](../src/factor_graph.rs.md). For the algorithmic

@@ -113,7 +113,7 @@ impl EdgeData {
     /// Updates edge state after the factor has computed its result.
     ///
     /// Sets `x` and the rightward weight from the factor's output, computes
-    /// the message difference for convergence tracking, and resets `u` to zero
+    /// the message difference diagnostic, and resets `u` to zero
     /// if the factor emitted infinite weight (certainty kills disagreement).
     pub(crate) fn set_result_from_factor(&mut self, result: WeightedValue) {
         self.x = result.value;

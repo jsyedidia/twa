@@ -339,11 +339,53 @@ fn step_many(&mut self, count: usize) {
     }
 }
 
-fn run_to_convergence(&mut self) { /* ... */ }
+fn run_to_convergence(&mut self) {
+    let circle_satisfaction = if self.domain == ProblemDomain::CirclePacking {
+        self.circle_variables.as_ref().map(|variables| {
+            (
+                variables.clone(),
+                self.circle_problem().clone(),
+                self.convergence_delta,
+            )
+        })
+    } else {
+        None
+    };
+    let Some(graph) = &mut self.graph else {
+        self.running = false;
+        return;
+    };
+    if graph.converged() {
+        self.running = false;
+        return;
+    }
+
+    let start = Instant::now();
+    match circle_satisfaction {
+        Some((variables, problem, tolerance)) => {
+            graph.iterate_until_satisfied(self.max_iterations.max(1), |graph| {
+                max_overlap(
+                    graph,
+                    &variables,
+                    problem.horizontal_range,
+                    problem.vertical_range,
+                ) <= tolerance
+            });
+        }
+        None => {
+            graph.iterate_until_converged(self.max_iterations.max(1));
+        }
+    }
+    self.last_step_ms = start.elapsed().as_secs_f64() * 1_000.0;
+    self.running = false;
+}
 ```
 
-The app can step one or many iterations per frame. `run_to_convergence`
-delegates to `FactorGraph::iterate_until_converged`.
+The app can step one or many iterations per frame. Sudoku run-to-convergence
+delegates to `FactorGraph::iterate_until_converged`. Circle packing uses
+`FactorGraph::iterate_until_satisfied` so the run stops only when variable
+beliefs are stable and `max_overlap` is below the same tolerance shown in the
+solver controls.
 
 ### Controls And Status
 
