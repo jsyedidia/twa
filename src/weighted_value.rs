@@ -121,8 +121,8 @@ mod tests {
 
     #[test]
     fn weighted_value_new() {
-        let wv = WeightedValue::new(3.14, MessageWeight::Infinite);
-        assert_eq!(wv.value, 3.14);
+        let wv = WeightedValue::new(3.125, MessageWeight::Infinite);
+        assert_eq!(wv.value, 3.125);
         assert_eq!(wv.weight, MessageWeight::Infinite);
     }
 

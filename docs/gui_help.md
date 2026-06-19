@@ -18,8 +18,6 @@ For automated checks that do not open a window:
 cargo run --features gui --bin gui -- --smoke-test
 ```
 
-You will probably want to adjust the size of the window to get the whole canvas visible.
-
 ## Controls
 
 The left panel controls the active problem, graph parameters, and iteration

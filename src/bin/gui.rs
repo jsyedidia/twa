@@ -987,10 +987,9 @@ impl SolverApp {
         }
 
         let available = ui.available_size();
-        let width = available.x.clamp(320.0, 880.0);
-        let height = (width * (vertical_span / horizontal_span) as f32)
-            .min(available.y.max(320.0))
-            .max(280.0);
+        let canvas_size = fitted_canvas_size(available, horizontal_span, vertical_span);
+        let width = canvas_size.x;
+        let height = canvas_size.y;
         let scale = width / horizontal_span as f32;
         let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), Sense::click());
         self.handle_circle_click(&response, rect, scale, height, &problem, circles);
@@ -1290,6 +1289,21 @@ fn range_span(range: CoordinateRange) -> f64 {
     range.upper - range.lower
 }
 
+fn fitted_canvas_size(available: Vec2, horizontal_span: f64, vertical_span: f64) -> Vec2 {
+    let max_width = available.x.clamp(1.0, 880.0);
+    let max_height = available.y.max(1.0);
+    let aspect = (horizontal_span / vertical_span) as f32;
+
+    let mut width = max_width;
+    let mut height = width / aspect;
+    if height > max_height {
+        height = max_height;
+        width = height * aspect;
+    }
+
+    Vec2::new(width, height)
+}
+
 fn value_label(value: i32) -> String {
     if value < 0 {
         ".".to_owned()
@@ -1373,11 +1387,13 @@ mod tests {
 
     #[test]
     fn scaled_radii_preserve_target_count_and_density() {
-        let mut app = SolverApp::default();
-        app.domain = ProblemDomain::CirclePacking;
-        app.circle_problem_index = 1;
-        app.circle_count = 37;
-        app.circle_density_target = 0.5;
+        let app = SolverApp {
+            domain: ProblemDomain::CirclePacking,
+            circle_problem_index: 1,
+            circle_count: 37,
+            circle_density_target: 0.5,
+            ..Default::default()
+        };
 
         let radii = app.scaled_radii();
         let count = radii.iter().map(|entry| entry.count).sum::<usize>();
@@ -1409,5 +1425,20 @@ mod tests {
             app.sudoku_state(),
             app.puzzle_spec().solution.as_deref().unwrap()
         );
+    }
+
+    #[test]
+    fn circle_canvas_size_fits_available_space() {
+        let size = fitted_canvas_size(Vec2::new(900.0, 650.0), 1.0, 1.0);
+
+        assert!(size.x <= 900.0);
+        assert!(size.y <= 650.0);
+        assert!((size.x - 650.0).abs() < 1e-6);
+        assert!((size.y - 650.0).abs() < 1e-6);
+
+        let wide = fitted_canvas_size(Vec2::new(900.0, 650.0), 2.0, 1.0);
+        assert!(wide.x <= 900.0);
+        assert!(wide.y <= 650.0);
+        assert!((wide.x / wide.y - 2.0).abs() < 1e-6);
     }
 }

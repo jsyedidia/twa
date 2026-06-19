@@ -1,8 +1,7 @@
 #[cfg(feature = "gui")]
 #[test]
 fn gui_smoke_test_launches_and_exits() {
-    let exe =
-        option_env!("CARGO_BIN_EXE_gui").expect("gui binary should be built with gui feature");
+    let exe = env!("CARGO_BIN_EXE_gui");
     let output = std::process::Command::new(exe)
         .arg("--smoke-test")
         .output()
