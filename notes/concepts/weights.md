@@ -41,8 +41,7 @@ The intended meanings are:
 - `Standard` — ordinary finite opinion.
 - `Infinite` — certainty.
 
-The helper function `message_weight_value(weight) -> f64` maps these to numeric
-values:
+The method `MessageWeight::value() -> f64` maps these to numeric values:
 
 - `Zero` → `0.0`
 - `Standard` → `1.0`
@@ -57,15 +56,18 @@ rules explicit and avoids fragile computations involving infinity.
 During the variable pass, the variable must combine incoming messages from all
 connected factors. The three weights create a priority system:
 
-1. **If any incoming message has infinite weight**, the variable adopts that
-   value unconditionally. (If multiple infinite-weight messages disagree, the
-   problem is over-constrained.)
+1. **If any incoming message has infinite weight**, the variable adopts the
+   first such message in enabled-edge order. The implementation does not check
+   whether multiple infinite-weight messages agree, so callers and minimizers
+   must maintain that invariant.
 
-2. **If no message has infinite weight**, the variable computes a weighted
-   average of all standard-weight messages.
+2. **If no message has infinite weight**, the variable computes the arithmetic
+   mean of all standard-weight messages. Every standard weight has the same
+   numeric value, `1.0`.
 
 3. **Zero-weight messages are ignored** when any standard-weight message exists.
-   They participate only when all messages are zero-weight (fallback behavior).
+   When all messages have zero weight, the variable averages all their scalar
+   values and reports a zero-weight consensus.
 
 This three-level priority is what gives the algorithm its name. It allows:
 
@@ -77,11 +79,10 @@ This three-level priority is what gives the algorithm its name. It allows:
 
 Each edge carries weights in both directions:
 
-- The **left weight** (factor → variable direction): set by the factor's
-  minimizer when it writes its output.
-- The **right weight** (variable → factor direction): set by the variable
-  during consensus, reflecting the variable's current certainty about this
-  edge's value.
+- The **leftward weight** (variable → factor direction): set from the
+  variable's consensus result.
+- The **rightward weight** (factor → variable direction): set from the factor
+  minimizer's output.
 
 The edge note [src/edge_data.rs.md](../src/edge_data.rs.md) shows the concrete
 storage and accessors for these directions. The weighted value note
@@ -91,9 +92,11 @@ storage and accessors for these directions. The weighted value note
 ## Certainty Preservation
 
 When a factor receives an incoming message with infinite weight, it preserves
-that certainty on the outgoing side. This means known values propagate through
-the graph: if a variable is certain, every factor it touches knows it, and can
-use that certainty in its minimization logic.
+infinite weight on the same edge's outgoing message. The minimizer still
+chooses the outgoing scalar value, so this mechanism preserves the certainty
+status, not necessarily the input value. Each minimizer decides how a certain
+input interacts with its constraint; for example, `one_hot` uses certain
+inputs for constraint propagation.
 
 `FactorData` implements this by recording which incoming exchanges had
 infinite weight before the minimizer runs, then restoring infinite weight on

@@ -16,13 +16,18 @@ this repo:
 - `src/factor_graph.rs`, `src/weighted_value.rs`, and the other files under
   `src/` are library modules.
 - `src/bin/sudoku.rs` is an executable.
+- `src/bin/gui.rs` is another executable, available with the `gui` feature.
 
 The library root declares public modules:
 
 ```rust
 pub mod factor_graph;
+pub mod factor_node;
+pub mod graph_edge;
 pub mod minimizers;
 pub mod problems;
+pub mod variable_node;
+pub mod weighted_value;
 ```
 
 This is a little like an `__init__.py` deciding which submodules belong to a
@@ -57,7 +62,7 @@ weight, and returns a typed variable handle.
 
 Important types in this repo include:
 
-- `f64`: floating-point values used for messages, coordinates, and weights.
+- `f64`: floating-point values used for messages and coordinates.
 - `usize`: indexes, counts, and vector lengths.
 - `bool`: convergence and enabled-state flags.
 - `u64`: random seeds.
@@ -175,8 +180,9 @@ pub enum MessageWeight {
 This is more precise than using strings such as `"zero"` or integers such as
 `0`, `1`, and `2`.
 
-Enums can also carry data. Error types in the Sudoku parser use this style so
-each failure can keep useful context, such as an invalid token or file path.
+Enums can also carry data. The Sudoku parser's error type uses this style so
+each failure can keep useful context, such as an invalid token, its row and
+column, or an underlying I/O error.
 
 ## `impl` Blocks And Methods
 
@@ -204,20 +210,25 @@ Methods that receive `&self` read an existing value. Methods that receive
 Rust usually represents recoverable failure with `Result<T, E>`:
 
 ```rust
-pub fn read_sudoku_puzzle(path: &Path) -> Result<SudokuPuzzle, SudokuReadError>
+pub fn read_sudoku_puzzle(
+    path: impl AsRef<Path>,
+) -> Result<SudokuPuzzle, SudokuParseError>
 ```
 
-This returns `Ok(SudokuPuzzle)` on success or `Err(SudokuReadError)` on
+This returns `Ok(SudokuPuzzle)` on success or `Err(SudokuParseError)` on
 failure.
+
+`impl AsRef<Path>` means callers may pass any type that can be viewed as a
+path, including `&Path`, `PathBuf`, and path-like string values.
 
 The `?` operator propagates errors:
 
 ```rust
-let contents = fs::read_to_string(path).map_err(SudokuReadError::Read)?;
+parse_sudoku_puzzle(&fs::read_to_string(path)?)
 ```
 
 If reading fails, the surrounding function returns that error immediately. If
-it succeeds, execution continues with `contents`.
+it succeeds, the file contents are borrowed by `parse_sudoku_puzzle`.
 
 This repo uses panics for programmer errors, such as invalid graph handles or
 impossible geometry:
@@ -423,7 +434,9 @@ Filesystem paths use:
 The Sudoku parser reads from a path:
 
 ```rust
-pub fn read_sudoku_puzzle(path: &Path) -> Result<SudokuPuzzle, SudokuReadError>
+pub fn read_sudoku_puzzle(
+    path: impl AsRef<Path>,
+) -> Result<SudokuPuzzle, SudokuParseError>
 ```
 
 The Sudoku CLI owns the parsed path:

@@ -87,8 +87,10 @@ builder's candidate pruning is explained in
 
 Both builders return a variables object that records which graph variable
 belongs to which candidate. After iteration, extraction returns a row-major
-`Vec<i32>` with one selected zero-based value per cell, or `-1` when no
-candidate is above the selection threshold.
+`Vec<i32>`. A candidate is selected only when its graph value is greater than
+`0.99`; extraction reports its zero-based value, or `-1` when no candidate
+passes that threshold. Compact extraction copies givens directly into the
+result.
 
 The command-line frontend in [src/bin/sudoku.rs.md](../src/bin/sudoku.rs.md)
 uses the parser, chooses either the compact or direct builder, runs

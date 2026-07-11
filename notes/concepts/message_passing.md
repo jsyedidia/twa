@@ -76,7 +76,9 @@ For each enabled factor:
 - Package these as `WeightedValueExchange` entries with their weights.
 - Call the factor's minimization function.
 - The minimizer writes its preferred values back into the exchange entries.
-- Update each edge's `x` and outgoing weight from the minimizer's output.
+- Update each edge's `x` and outgoing weight from the minimizer's output. If
+  the incoming weight on an edge was infinite, `FactorData` forces that edge's
+  outgoing weight back to infinite after the minimizer runs.
 
 ### 2. Variable Pass
 
@@ -85,11 +87,22 @@ For each variable:
 - Gather the incoming messages from all connected edges: `m = x + u` with
   weights.
 - Compute the weighted consensus value `z`:
-  - If any message has infinite weight, `z` takes that value (certainty wins).
-  - Otherwise, `z` is the weighted average of standard-weight messages.
+  - If any message has infinite weight, `z` takes the first such value
+    encountered (certainty wins).
+  - Otherwise, if any message has standard weight, `z` is the arithmetic mean
+    of the standard-weight messages.
   - Zero-weight messages are ignored when standard-weight messages exist.
-- Update `z` on all connected edges (blended with learning rate).
-- Update `u` on each edge: `u += x - z`.
+- If every message has zero weight, average all their scalar values and give
+  the consensus zero weight.
+- Write the consensus `z` and its weight to every enabled edge.
+- Update disagreement on an ordinary standard/standard edge:
+  `u += learning_rate * (x - z)`.
+
+The implementation resets `u` instead of accumulating it when either
+direction has infinite weight, when the factor-to-variable direction has zero
+weight, or when the variable has only one standard-weight incoming message.
+Those resets discard disagreement that is no longer useful under the
+three-weight rules.
 
 ### 3. Convergence Check
 
@@ -99,19 +112,23 @@ converged and iteration stops early.
 
 `FactorGraph::max_message_difference()` also exposes the largest enabled-edge
 message change as a diagnostic. That quantity tracks dual-state motion; it is
-not the default stopping criterion because the messages can have a stable
-limit cycle after the variable beliefs have settled.
+not the default stopping criterion because messages can continue in a limit
+cycle after the variable beliefs have settled.
 
-## Learning Rate
+## Dual-Update Learning Rate
 
-The variable update blends the old `z` with the new consensus:
+The graph calls its step-size parameter `learning_rate`. It does not blend the
+old and new consensus values. The variable adopts the newly computed `z`
+immediately, while the parameter scales the disagreement update:
 
 ```text
-z_new = z_old + learning_rate * (consensus - z_old)
+u_new = u_old + learning_rate * (x - z)
 ```
 
-A learning rate of 1.0 means immediate adoption of the new consensus. Smaller
-values provide damping, which can help convergence on difficult problems.
+This is the implementation's counterpart to the dual-variable step size
+`alpha` in the paper (with the standard message weight normalized to `1.0`).
+Smaller values make disagreement accumulate more slowly; they do not damp
+`z` directly.
 
 ## Convergence
 

@@ -18,13 +18,19 @@ In this repo:
 - `src/factor_graph.rs`, `src/weighted_value.rs`, and the other files under
   `src/` are library modules.
 - `src/bin/sudoku.rs` is a binary crate.
+- `src/bin/gui.rs` is another binary crate, compiled only with the `gui`
+  feature.
 
 The library root declares modules explicitly:
 
 ```rust
 pub mod factor_graph;
+pub mod factor_node;
+pub mod graph_edge;
 pub mod minimizers;
 pub mod problems;
+pub mod variable_node;
+pub mod weighted_value;
 ```
 
 There are no textual includes for normal code organization. Public API,
@@ -209,15 +215,20 @@ The type system prevents accidental unchecked null access.
 Rust commonly represents recoverable failure with `Result<T, E>`:
 
 ```rust
-pub fn read_sudoku_puzzle(path: &Path) -> Result<SudokuPuzzle, SudokuReadError>
+pub fn read_sudoku_puzzle(
+    path: impl AsRef<Path>,
+) -> Result<SudokuPuzzle, SudokuParseError>
 ```
 
-The result is either `Ok(SudokuPuzzle)` or `Err(SudokuReadError)`. The `?`
+The result is either `Ok(SudokuPuzzle)` or `Err(SudokuParseError)`. The `?`
 operator propagates errors:
 
 ```rust
-let contents = fs::read_to_string(path).map_err(SudokuReadError::Read)?;
+parse_sudoku_puzzle(&fs::read_to_string(path)?)
 ```
+
+`impl AsRef<Path>` accepts any argument type that can provide a borrowed
+`Path`, including `&Path`, `PathBuf`, and path-like string values.
 
 Invalid programmer inputs often use `assert!`, which panics on failure:
 

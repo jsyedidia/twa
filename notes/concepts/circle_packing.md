@@ -49,10 +49,11 @@ r1 + r2
 ```
 
 The intersection factor has four edges: `x1`, `y1`, `x2`, and `y2`. When the
-centers are already at least `r1 + r2` apart, the factor emits zero-weight
-messages and leaves the incoming coordinates alone. When the circles overlap,
-it moves the proposed centers apart symmetrically along the line between the
-centers.
+centers are farther apart than `r1 + r2`, the factor emits zero-weight messages
+and leaves the incoming coordinates alone. When the circles overlap, it moves
+the proposed centers apart symmetrically along the line between the centers.
+At exact tangency, it leaves the coordinates unchanged but emits standard
+weight because the implementation's passive branch uses a strict comparison.
 
 If the centers exactly coincide, the factor chooses the positive x direction as
 the deterministic separating direction.
@@ -77,9 +78,12 @@ stable, but it disables factors for circle pairs that are clearly far apart. A
 small spatial grid groups circles by current center position. After each
 iteration, graph-aware callbacks update which pair factors are enabled.
 
-The grid check is conservative: nearby pairs can be enabled even before they
-overlap. This keeps the solver from missing collisions while avoiding most
-distant pair work.
+The grid check uses an axis-aligned distance threshold equal to the larger
+circle radius plus `nearby_radius_scale * maximum_radius`. Nearby pairs can
+therefore be enabled before they overlap. A scale of at least `1.0` makes this
+threshold at least the sum of any pair's radii and prevents overlapping pairs
+from being filtered out; smaller allowed values trade that guarantee for fewer
+active factors. The GUI defaults to `1.4`.
 
 The dynamic enable/disable mechanism uses graph-aware callbacks on
 `FactorGraph`; those callbacks are explained in
@@ -105,10 +109,12 @@ both stable beliefs and `max_overlap <= tolerance` through
 ## Relationship To TWA
 
 Circle packing is the clearest example in this crate of zero-weight messages
-as "no active opinion." A satisfied boundary or intersection factor emits zero
-weight, so it does not pull the variable consensus. An active violation emits
-standard weight, so the variable pass averages it with other active geometric
-corrections.
+as "no active opinion." A satisfied boundary factor emits zero weight, as does
+an intersection factor with positive clearance, so it does not pull the
+variable consensus. An active violation emits standard weight, so the variable
+pass averages it with other active geometric corrections. Exact tangency is
+the boundary case noted above: the intersection factor still emits standard
+weight.
 
 The optional kiss constraint is different: it asserts an exact tangent
 relationship and therefore keeps sending standard-weight messages.

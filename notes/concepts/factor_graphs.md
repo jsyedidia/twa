@@ -86,6 +86,11 @@ Each `create_edge` call links the new edge to one variable. Each
 minimizer only reads and writes `WeightedValueExchange` entries — it does not
 need to know about graph internals.
 
+The caller is responsible for constructing a well-formed graph: every edge
+should belong to exactly one factor, and every variable must retain at least
+one enabled edge during iteration. `create_factor` checks that its edge handles
+exist, but it does not reject a reused edge or an empty factor.
+
 ### Iterating
 
 After building, call `iterate_until_converged()`:
@@ -94,10 +99,12 @@ After building, call `iterate_until_converged()`:
 let converged = graph.iterate_until_converged(1000);
 ```
 
-This runs up to 1000 iterations. The learning rate, convergence threshold, and
-random seed live on the graph; `FactorGraph::default()` uses the standard
-settings, and `FactorGraph::new(learning_rate, convergence_delta, random_seed)`
-lets callers choose them explicitly.
+This runs up to 1000 iterations. The dual-update learning rate, convergence
+threshold, and random seed live on the graph; `FactorGraph::default()` uses
+`1.0`, `1e-5`, and `0`, respectively.
+`FactorGraph::new(learning_rate, convergence_delta, random_seed)` lets callers
+choose them explicitly. The learning rate scales updates to the disagreement
+variable `u`; it does not blend consecutive variable beliefs.
 
 The default convergence check is belief-based: after an iteration, every
 variable's new value must be within `convergence_delta` of its previous value.
@@ -172,7 +179,8 @@ The implementation maps that description to `FactorGraph::iterate()`:
 
 1. factor pass: factors compute local `x` values;
 2. variable pass: variables compute consensus `z` values;
-3. edge update: edges update disagreement `u`;
+3. edge update: edges either update or reset disagreement `u` according to the
+   message weights;
 4. convergence check: variable beliefs report whether values have stabilized.
 
 For the step-by-step implementation, read
@@ -181,6 +189,8 @@ message flow, read [message_passing.md](message_passing.md).
 
 ## Further Reading
 
+- [An Improved Three-Weight Message-Passing Algorithm](https://arxiv.org/abs/1305.1961)
+  is the paper on which this implementation is based.
 - [message_passing.md](message_passing.md) explains one iteration in detail.
 - [weights.md](weights.md) explains zero, standard, and infinite weights.
 - [src/factor_graph.rs.md](../src/factor_graph.rs.md) walks through graph
