@@ -840,7 +840,7 @@ impl SolverApp {
                 painter.rect_stroke(
                     cell_rect,
                     0.0,
-                    Stroke::new(1.0, Color32::from_rgb(80, 86, 96)),
+                    Stroke::new(1.0_f32, Color32::from_rgb(80, 86, 96)),
                     StrokeKind::Inside,
                 );
                 if certain {
@@ -852,7 +852,7 @@ impl SolverApp {
                     painter.rect_stroke(
                         cell_rect.shrink(2.0),
                         0.0,
-                        Stroke::new(2.0, color),
+                        Stroke::new(2.0_f32, color),
                         StrokeKind::Inside,
                     );
                 }
@@ -874,9 +874,9 @@ impl SolverApp {
         for index in 0..=side {
             let major = index % puzzle.inner_side == 0;
             let stroke = if major {
-                Stroke::new(2.0, Color32::from_rgb(210, 216, 226))
+                Stroke::new(2.0_f32, Color32::from_rgb(210, 216, 226))
             } else {
-                Stroke::new(1.0, Color32::from_rgb(92, 98, 108))
+                Stroke::new(1.0_f32, Color32::from_rgb(92, 98, 108))
             };
             let offset = index as f32 * cell_size;
             painter.line_segment(
@@ -1010,7 +1010,7 @@ impl SolverApp {
         painter.rect_stroke(
             rect,
             0.0,
-            Stroke::new(2.0, Color32::from_rgb(210, 216, 226)),
+            Stroke::new(2.0_f32, Color32::from_rgb(210, 216, 226)),
             StrokeKind::Inside,
         );
 
@@ -1036,13 +1036,13 @@ impl SolverApp {
             painter.circle_stroke(
                 center,
                 radius,
-                Stroke::new(if has_overlap[index] { 3.0 } else { 1.5 }, outline),
+                Stroke::new(if has_overlap[index] { 3.0_f32 } else { 1.5_f32 }, outline),
             );
             if selected {
                 painter.circle_stroke(
                     center,
                     radius + 4.0,
-                    Stroke::new(2.0, Color32::from_rgb(226, 196, 94)),
+                    Stroke::new(2.0_f32, Color32::from_rgb(226, 196, 94)),
                 );
             }
         }
@@ -1072,7 +1072,7 @@ impl SolverApp {
                         world_to_screen(problem, circles[first], rect, scale, height),
                         world_to_screen(problem, circles[second], rect, scale, height),
                     ],
-                    Stroke::new(1.0, Color32::from_rgba_unmultiplied(226, 196, 94, 145)),
+                    Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(226, 196, 94, 145)),
                 );
                 drawn += 1;
             }
