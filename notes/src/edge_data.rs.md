@@ -144,17 +144,14 @@ passes and message-difference diagnostics.
         self.enabled
     }
 
-    #[cfg(test)]
     pub(crate) fn x(&self) -> f64 {
         self.x
     }
 
-    #[cfg(test)]
     pub(crate) fn z(&self) -> f64 {
         self.z
     }
 
-    #[cfg(test)]
     pub(crate) fn u(&self) -> f64 {
         self.u
     }

@@ -12,6 +12,36 @@ use crate::weighted_value::{MessageWeight, MinimizationFn, WeightedValue};
 type Callback = Box<dyn FnMut()>;
 type GraphCallback = Box<dyn FnMut(&mut FactorGraph)>;
 
+/// A read-only snapshot of the algorithm state on one graph edge.
+///
+/// This type is intended for diagnostics and does not participate in
+/// iteration. Reading it does not add edges, invoke minimizers, or mutate the
+/// graph.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+pub struct EdgeDiagnostics {
+    /// The variable connected to the edge.
+    pub variable: VariableNode,
+    /// Whether the edge currently participates in iteration.
+    pub enabled: bool,
+    /// The factor-side local value, `x`.
+    pub local_value: f64,
+    /// The variable-side consensus value, `z`.
+    pub consensus_value: f64,
+    /// The accumulated disagreement, `u`.
+    pub disagreement: f64,
+    /// The current variable-to-factor message, `z - u`, and its weight.
+    pub message_to_factor: WeightedValue,
+    /// The current factor-to-variable message, `x + u`, and its weight.
+    pub message_to_variable: WeightedValue,
+    /// The variable-to-factor message change observed by the latest factor pass.
+    ///
+    /// After a complete iteration, `message_to_factor` is the message prepared
+    /// for the next factor pass, while this difference describes the message
+    /// consumed by the factor pass that just completed.
+    pub message_difference: Option<f64>,
+}
+
 /// The main public type of the TWA crate.
 ///
 /// A `FactorGraph` holds variables, edges, and factors, and drives the
@@ -113,6 +143,52 @@ impl FactorGraph {
     /// Returns the number of currently enabled factors.
     pub fn num_enabled_factors(&self) -> usize {
         self.factors.iter().filter(|f| f.is_enabled()).count()
+    }
+
+    /// Returns all factor handles in creation order.
+    pub fn factors(&self) -> impl ExactSizeIterator<Item = FactorNode> + '_ {
+        (0..self.factors.len()).map(FactorNode::new)
+    }
+
+    /// Returns all edge handles in creation order.
+    pub fn edges(&self) -> impl ExactSizeIterator<Item = GraphEdge> + '_ {
+        (0..self.edges.len()).map(GraphEdge::new)
+    }
+
+    /// Returns a factor's incident edge handles in minimizer exchange order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the factor handle is invalid or out of bounds.
+    pub fn factor_edges(
+        &self,
+        factor: FactorNode,
+    ) -> impl ExactSizeIterator<Item = GraphEdge> + '_ {
+        self.validate_factor(factor);
+        self.factors[factor.index()]
+            .exchanges()
+            .iter()
+            .map(|exchange| exchange.edge())
+    }
+
+    /// Returns a read-only snapshot of one edge's algorithm state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the edge handle is invalid or out of bounds.
+    pub fn edge_diagnostics(&self, edge: GraphEdge) -> EdgeDiagnostics {
+        self.validate_edge(edge);
+        let edge = &self.edges[edge.index()];
+        EdgeDiagnostics {
+            variable: edge.variable(),
+            enabled: edge.is_enabled(),
+            local_value: edge.x(),
+            consensus_value: edge.z(),
+            disagreement: edge.u(),
+            message_to_factor: edge.weighted_message_to_factor(),
+            message_to_variable: edge.weighted_message_to_variable(),
+            message_difference: edge.message_difference(),
+        }
     }
 
     /// Returns the largest available enabled-edge message difference.

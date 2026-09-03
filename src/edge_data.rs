@@ -67,19 +67,16 @@ impl EdgeData {
     }
 
     /// Returns the factor-side local value.
-    #[cfg(test)]
     pub(crate) fn x(&self) -> f64 {
         self.x
     }
 
     /// Returns the variable-side consensus value.
-    #[cfg(test)]
     pub(crate) fn z(&self) -> f64 {
         self.z
     }
 
     /// Returns the accumulated disagreement.
-    #[cfg(test)]
     pub(crate) fn u(&self) -> f64 {
         self.u
     }

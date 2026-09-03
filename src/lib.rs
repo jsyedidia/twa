@@ -13,7 +13,7 @@ pub(crate) mod edge_data;
 pub(crate) mod factor_data;
 pub(crate) mod variable_data;
 
-pub use factor_graph::FactorGraph;
+pub use factor_graph::{EdgeDiagnostics, FactorGraph};
 pub use factor_node::FactorNode;
 pub use graph_edge::GraphEdge;
 pub use minimizers::{
